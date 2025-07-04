@@ -58,6 +58,9 @@ if (Test-Path ".nvmrc") {
 #     Write-Host "https://doc.rust-lang.org/cargo/getting-started/installation.html" -ForegroundColor Green
 # }
 
+npm config set registry https://registry.npmmirror.com
+# npm config set registry https://registry.npmjs.org
+
 if ($null -eq $node) {
     Write-Host "`n...`n"
     Write-Host "NodeJS`n" -ForegroundColor White
@@ -82,16 +85,25 @@ npm install
 npm run build
 Pop-Location
 
+Write-Output "`nInstalling openai-adapters dependencies..." -ForegroundColor White
+Push-Location packages/openai-adapters
+npm install
+npm run build
+npm link
+Pop-Location
+
 Write-Host "`nInstalling Core extension dependencies..." -ForegroundColor White
 Push-Location core
 npm install
 npm link
+npm link @continuedev/openai-adapters
 Pop-Location
 
 Write-Output "`nInstalling GUI extension dependencies..." -ForegroundColor White
 Push-Location gui
 npm install
 npm link @continuedev/core
+npm link @continuedev/openai-adapters
 npm run build
 Pop-Location
 
