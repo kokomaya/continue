@@ -7,6 +7,8 @@ import {
   constructLlmApi,
 } from "@continuedev/openai-adapters";
 import Handlebars from "handlebars";
+import * as path from "path";
+import * as vscode from "vscode";
 
 import { DevDataSqliteDb } from "../data/devdataSqlite.js";
 import { DataLogger } from "../data/log.js";
@@ -61,6 +63,42 @@ import {
   toCompleteBody,
   toFimBody,
 } from "./openaiTypeConverters.js";
+
+const { spawn } = require("child_process");
+
+function callPythonFunction(
+  path: string,
+  name: string,
+  ws: string,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let stdoutData = "";
+    let stderrData = "";
+
+    const pythonProcess = spawn("python", [path, name, ws]);
+    pythonProcess.stdout.on("data", (data: Buffer) => {
+      stdoutData += data.toString();
+      console.log(`Output: ${data.toString()}`);
+    });
+
+    pythonProcess.stderr.on("data", (data: Buffer) => {
+      stderrData += data.toString();
+      console.error(`Error: ${data.toString()}`);
+    });
+
+    pythonProcess.on("close", (code: number) => {
+      if (code !== 0) {
+        reject(
+          new Error(
+            `Python process exited with code ${code}: ${stderrData.trim()}`,
+          ),
+        );
+      } else {
+        resolve(stdoutData.trim());
+      }
+    });
+  });
+}
 
 export class LLMError extends Error {
   constructor(
@@ -926,6 +964,7 @@ export abstract class BaseLLM implements ILLM {
 
     let thinking = "";
     let completion = "";
+    let response = "";
 
     try {
       if (this.templateMessages) {
@@ -984,6 +1023,7 @@ export abstract class BaseLLM implements ILLM {
           )) {
             if (chunk.role === "assistant") {
               completion += this._formatChatMessage(chunk);
+              response += chunk.content;
             } else if (chunk.role === "thinking") {
               thinking += chunk.content;
             }
@@ -996,6 +1036,49 @@ export abstract class BaseLLM implements ILLM {
           }
         }
       }
+
+      let script_response = "";
+      const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+      if (rootPath) {
+        try {
+          script_response = await callPythonFunction(
+            rootPath + "\\script.py" /* TODO: do not hardcode script name */,
+            response,
+            vscode.workspace.workspaceFolders[0].uri.fsPath,
+          );
+        } catch (error) {}
+
+        /* analyze the resonse from python script */
+        const lines = script_response
+          .split("\n")
+          .filter((line) => line.trim() !== "");
+        const result: Record<string, string> = {};
+
+        lines.forEach((line) => {
+          const [key, value] = line.split("=");
+          if (key && value) {
+            result[key.trim()] = value.trim();
+          }
+        });
+
+        const startLine = Number(result.STARTLINE);
+        const endLine = Number(result.ENDLINE);
+        const filename = result.FILENAME || "";
+        const selection = new vscode.Selection(
+          new vscode.Position(startLine, 0),
+          new vscode.Position(endLine, 0),
+        );
+        const filePath = path.join(rootPath, filename);
+        const fileUri = vscode.Uri.file(filePath);
+        /* TODO: check if it exists before opening */
+        const document = await vscode.workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(document, {
+          selection: selection,
+          viewColumn: vscode.ViewColumn.Active,
+          preserveFocus: false,
+        });
+      }
+
       status = this._logEnd(
         completionOptions.model,
         prompt,
