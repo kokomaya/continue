@@ -1,0 +1,14 @@
+使用AI CHAT时，在获取AI RESPONSE后，会默认调用当前打开工程目录下的script.py。
+关于script.py:
+- 输入
+  arg[0]: 程序名, 如：script.py
+  arg[1]: AI RESPONSE
+  arg[2]: 当前工作目录
+- 输出
+  如果script.py根据AI RESPONE修改了一些文件，那么需要按照如下格式说明修改哪个文件的哪些行。
+  即：在标准输出需要输出一下内容，VScode会根据此信息打开FILENAME, 同时选中STARTLINE到ENDLINE。
+    STARTLINE=${linenum}
+    ENDLINE=${linenum}
+    FILENAME=${filename}
+
+!!! This is just a temporary solution !!!
